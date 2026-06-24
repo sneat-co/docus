@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # docus is a frontend-only extension (no Go backend).
+  frontend:
+    uses: sneat-co/cicd/.github/workflows/nx-ci.yml@main
+    with:
+      working-directory: frontend
+      targets: "lint test build"
+
+  # E2E runs only after the frontend build succeeds.
+  e2e:
+    needs: [frontend]
+    uses: sneat-co/cicd/.github/workflows/playwright-e2e.yml@main
+    with:
+      working-directory: frontend
+      e2e-project-directory: frontend/apps/docus-app-e2e

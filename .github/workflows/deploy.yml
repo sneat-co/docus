@@ -1,0 +1,64 @@
+name: Deploy docus-app
+
+# Builds docus-app and deploys it to the Firebase Hosting "docus-app" site
+# (project sneat-eur3-1) on main, AFTER the "CI" workflow succeeds — so
+# a red build never ships. Manual dispatch also available.
+#
+# Auth is keyless via Workload Identity Federation: GitHub OIDC -> GCP service
+# account deployer-to-gae (the org's shared deployer) through the org-wide
+# "sneat-co" WIF provider. No secrets. (sneat-co/docus is bound to the SA.)
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docus-app
+        working-directory: frontend
+        run: pnpm exec nx build docus-app
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/588648831063/locations/global/workloadIdentityPools/github/providers/sneat-co
+          service_account: deployer-to-gae@sneat-eur3-1.iam.gserviceaccount.com
+
+      - name: Deploy to Firebase Hosting (live)
+        run: npx --yes firebase-tools@15 deploy --only hosting --project sneat-eur3-1 --non-interactive
+
+      - name: Post-deploy smoke test (no emulator in prod)
+        working-directory: frontend
+        run: |
+          pnpm exec playwright install chromium --with-deps
+          node scripts/post-deploy-smoke.mjs https://docus-app.web.app

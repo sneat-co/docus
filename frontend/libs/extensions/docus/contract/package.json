@@ -1,0 +1,12 @@
+{
+  "name": "@sneat/extension-docus-contract",
+  "version": "0.0.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@sneat/extension-assetus-contract": "0.0.5",
+    "vitest": "^4.0.9"
+  },
+  "sideEffects": false
+}
