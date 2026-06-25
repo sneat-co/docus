@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>sneat-co/sneat-renovate-nx"],
+  "packageRules": [
+    {
+      "matchDepTypes": [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies"
+      ],
+      "enabled": false,
+      "description": "Disable lookup/updates for @sneat/* packages (coordinated manually / via the scope release, not by Renovate)",
+      "matchPackageNames": ["@sneat/{/,}**"]
+    }
+  ]
+}
