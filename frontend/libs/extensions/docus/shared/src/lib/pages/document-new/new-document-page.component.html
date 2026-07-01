@@ -10,32 +10,65 @@
 <ion-content>
   @if (!docType) {
     <p class="ion-margin">
-      <ion-text color="medium">Step 1 of 4</ion-text>
+      <ion-text color="medium">Step 1 of {{ schema ? 3 : 4 }}</ion-text>
     </p>
-  }
 
-  <ion-card>
-    <sneat-select-from-list
-      [(ngModel)]="docType"
-      (ngModelChange)="onDocTypeChange($event)"
-      [isFilterable]="false"
-      title="Document Type"
-      [items]="docTypes"
-      labelPlacement="start"
-    />
-
-    @if (docType === "other") {
-      <ion-item>
-        <ion-label>Title</ion-label>
-        <ion-input [(ngModel)]="docTitle" />
-      </ion-item>
+    <!-- Doc-type picker, grouped sensibly (Identity / Family / Vehicle /
+         Education / Legal). Types not yet modelled with a docus schema
+         (only 'other' today) are offered separately below the groups. -->
+    @for (group of groupedDocTypes; track group.category) {
+      <ion-card>
+        <ion-list>
+          <ion-list-header>
+            <ion-label>{{ group.label }}</ion-label>
+          </ion-list-header>
+          @for (item of group.items; track item.id) {
+            <ion-item button detail="true" (click)="selectDocType(item.id)">
+              <ion-label>
+                <span style="padding-right: 0.5em">{{ item.emoji }}</span>
+                {{ item.title }}
+              </ion-label>
+            </ion-item>
+          }
+        </ion-list>
+      </ion-card>
     }
-  </ion-card>
+
+    <ion-card>
+      <ion-list>
+        <ion-list-header>
+          <ion-label>Other</ion-label>
+        </ion-list-header>
+        <ion-item button detail="true" (click)="selectDocType('other')">
+          <ion-label>Other document</ion-label>
+        </ion-item>
+      </ion-list>
+    </ion-card>
+  } @else {
+    <ion-card>
+      <ion-item lines="none">
+        <ion-label>
+          <span style="padding-right: 0.5em">{{ selectedDocTypeItem?.emoji }}</span>
+          {{ selectedDocTypeItem?.title || docType }}
+        </ion-label>
+        <ion-button slot="end" fill="clear" size="small" (click)="clearDocType()">
+          Change
+        </ion-button>
+      </ion-item>
+
+      @if (docType === "other") {
+        <ion-item>
+          <ion-label>Title</ion-label>
+          <ion-input [(ngModel)]="docTitle" />
+        </ion-item>
+      }
+    </ion-card>
+  }
 
   @if (docType) {
     @if (!country) {
       <p class="ion-margin">
-        <ion-text color="medium">Step 2 of 4</ion-text>
+        <ion-text color="medium">Step 2 of {{ schema ? 3 : 4 }}</ion-text>
       </p>
     }
     <ion-card>
@@ -47,97 +80,193 @@
         <p>This page is missing a required parameter.</p>
       }
 
-      @if (!$hasSelectedContacts()) {
-        <p class="ion-margin">
-          <ion-text color="medium">Step 3 of 4</ion-text>
-        </p>
-      }
-      <ion-card>
-        <sneat-contacts-selector-input
-          [$space]="$space()"
-          [$contacts]="$contacts()"
-          [$max]="docFields.members?.max"
-          [$selectedContacts]="$selectedContacts()"
-          (selectedContactsChange)="$selectedContacts.set($event)"
-        />
-      </ion-card>
-
-      @if ($hasSelectedContacts()) {
-        @if (!isMissingRequiredParams) {
+      @if (schema) {
+        <!-- New doc-type schema flow: one contact-role picker per role
+             (e.g. Marriage => Spouse + Spouse, Birth => Child + Parent[+
+             Parent]), reusing the contactus contact-picker. -->
+        @if (!hasRequiredContacts) {
           <p class="ion-margin">
-            <ion-text color="medium">Step 4 of 4</ion-text>
+            <ion-text color="medium">Step 3 of 3</ion-text>
           </p>
-          <ion-card>
-            <ion-item-divider [color]="docNumber ? 'light' : 'primary'">
-              <ion-label>Required fields</ion-label>
-            </ion-item-divider>
-            <ion-item>
-              <ion-label>Number</ion-label>
-              <ion-input [(ngModel)]="docNumber" />
-            </ion-item>
-            <ion-item>
-              <ion-label color="medium">Issued by</ion-label>
-              <ion-input />
-            </ion-item>
-            <ion-grid class="ion-grid-layout">
-              <ion-row>
-                <ion-col>
-                  <ion-item>
-                    <ion-label color="medium">Issued on</ion-label>
-                    <ion-input type="date" />
-                  </ion-item>
-                </ion-col>
-                <ion-col>
-                  <ion-item>
-                    <ion-label color="medium">Valid till</ion-label>
-                    <ion-input type="date" />
-                  </ion-item>
-                </ion-col>
-              </ion-row>
-            </ion-grid>
-          </ion-card>
-        }
-
-        @if (docType === "driving_license") {
-          <ion-card>
-            <ion-item-divider color="light">
-              <ion-label>Categories</ion-label>
-            </ion-item-divider>
-            <ion-item>
-              <ion-label>Category A</ion-label>
-              <ion-checkbox value="A" />
-            </ion-item>
-            <ion-item>
-              <ion-label>Category B</ion-label>
-              <ion-checkbox value="B" />
-            </ion-item>
-            <ion-item>
-              <ion-label>Category C</ion-label>
-              <ion-checkbox value="C" />
-            </ion-item>
-            <ion-item>
-              <ion-label>Category D</ion-label>
-              <ion-checkbox value="D" />
-            </ion-item>
-            <ion-item>
-              <ion-label>Category E</ion-label>
-              <ion-checkbox value="E" />
-            </ion-item>
-          </ion-card>
         }
         <ion-card>
-          <ion-card-content>
-            <ion-button [disabled]="!isFormValid" (click)="submit()">
-              Create
-            </ion-button>
-            <ion-button
-              color="light"
-              routerDirection="back"
-              routerLink="../documents"
-              >Cancel
-            </ion-button>
-          </ion-card-content>
+          <ion-item-divider color="light">
+            <ion-label>
+              {{ schema.contactRoles.length > 1 ? "People" : "Person" }}
+            </ion-label>
+          </ion-item-divider>
+          @for (role of schema.contactRoles; track role.id) {
+            @if (isRoleVisible(role)) {
+              <ion-item lines="none">
+                <ion-label color="medium">
+                  {{ role.label }}{{ role.min === 0 ? " (optional)" : "" }}
+                </ion-label>
+              </ion-item>
+              <sneat-contacts-selector-input
+                [$space]="$space()"
+                [$contacts]="$contacts()"
+                [$max]="1"
+                [$selectedContacts]="roleContactsFor(role.id)"
+                (selectedContactsChange)="onRoleContactsChange(role.id, $event)"
+              />
+            } @else {
+              <ion-item
+                button
+                lines="none"
+                (click)="revealOptionalRole(role)"
+              >
+                <ion-label color="primary">+ Add {{ role.label }}</ion-label>
+              </ion-item>
+            }
+          }
         </ion-card>
+
+        @if (hasRequiredContacts) {
+          <ion-card>
+            <ion-item-divider color="light">
+              <ion-label>Details</ion-label>
+            </ion-item-divider>
+            @for (f of schema.fields; track f.id) {
+              <ion-item>
+                <ion-label [color]="f.required ? 'dark' : 'medium'">
+                  {{ f.label }}{{ f.required ? " *" : "" }}
+                </ion-label>
+                <ion-input
+                  [type]="
+                    f.type === 'date'
+                      ? 'date'
+                      : f.type === 'number'
+                        ? 'number'
+                        : 'text'
+                  "
+                  [(ngModel)]="fieldValues[f.id]"
+                />
+              </ion-item>
+            }
+          </ion-card>
+
+          <ion-card>
+            <ion-card-content>
+              <ion-button
+                [disabled]="!isFormValid || isSubmitting"
+                (click)="submit()"
+              >
+                {{ isSubmitting ? "Creating…" : "Create" }}
+              </ion-button>
+              <ion-button
+                color="light"
+                routerDirection="back"
+                routerLink="../documents"
+                >Cancel
+              </ion-button>
+            </ion-card-content>
+          </ion-card>
+        }
+      } @else {
+        <!-- Legacy flow for doc types without a docus schema yet
+             ('other' today). Unchanged from before. -->
+        @if (!$hasSelectedContacts()) {
+          <p class="ion-margin">
+            <ion-text color="medium">Step 3 of 4</ion-text>
+          </p>
+        }
+        <ion-card>
+          <sneat-contacts-selector-input
+            [$space]="$space()"
+            [$contacts]="$contacts()"
+            [$max]="docFields.members?.max"
+            [$selectedContacts]="$selectedContacts()"
+            (selectedContactsChange)="$selectedContacts.set($event)"
+          />
+        </ion-card>
+
+        @if ($hasSelectedContacts()) {
+          @if (!isMissingRequiredParams) {
+            <p class="ion-margin">
+              <ion-text color="medium">Step 4 of 4</ion-text>
+            </p>
+            <ion-card>
+              <ion-item-divider [color]="docNumber ? 'light' : 'primary'">
+                <ion-label>Required fields</ion-label>
+              </ion-item-divider>
+              <ion-item>
+                <ion-label>Number</ion-label>
+                <ion-input [(ngModel)]="docNumber" />
+              </ion-item>
+              <ion-item>
+                <ion-label color="medium">Issued by</ion-label>
+                <ion-input />
+              </ion-item>
+              <ion-grid class="ion-grid-layout">
+                <ion-row>
+                  <ion-col>
+                    <ion-item>
+                      <ion-label color="medium">Issued on</ion-label>
+                      <ion-input type="date" />
+                    </ion-item>
+                  </ion-col>
+                  <ion-col>
+                    <ion-item>
+                      <ion-label color="medium">Valid till</ion-label>
+                      <ion-input type="date" />
+                    </ion-item>
+                  </ion-col>
+                </ion-row>
+              </ion-grid>
+            </ion-card>
+          }
+
+          <!-- Fable refactoring: driving_license now has a docus doc-type
+               schema (see the `schema` branch above) with a real, saved
+               "Categories" field, so this block is no longer reachable
+               (driving_license never falls into the legacy/no-schema
+               branch). The original checkboxes here were never bound to
+               any model or read on submit; kept only per the no-delete
+               policy. -->
+          @if (docType === "driving_license") {
+            <ion-card>
+              <ion-item-divider color="light">
+                <ion-label>Categories</ion-label>
+              </ion-item-divider>
+              <ion-item>
+                <ion-label>Category A</ion-label>
+                <ion-checkbox value="A" />
+              </ion-item>
+              <ion-item>
+                <ion-label>Category B</ion-label>
+                <ion-checkbox value="B" />
+              </ion-item>
+              <ion-item>
+                <ion-label>Category C</ion-label>
+                <ion-checkbox value="C" />
+              </ion-item>
+              <ion-item>
+                <ion-label>Category D</ion-label>
+                <ion-checkbox value="D" />
+              </ion-item>
+              <ion-item>
+                <ion-label>Category E</ion-label>
+                <ion-checkbox value="E" />
+              </ion-item>
+            </ion-card>
+          }
+          <ion-card>
+            <ion-card-content>
+              <ion-button
+                [disabled]="!isFormValid || isSubmitting"
+                (click)="submit()"
+              >
+                {{ isSubmitting ? "Creating…" : "Create" }}
+              </ion-button>
+              <ion-button
+                color="light"
+                routerDirection="back"
+                routerLink="../documents"
+                >Cancel
+              </ion-button>
+            </ion-card-content>
+          </ion-card>
+        }
       }
     }
   }

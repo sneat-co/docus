@@ -11,12 +11,15 @@ export const docusRoutes: Route[] = [
       ),
     // ...guardRoute,
   },
-  // {
-  // 	path: 'document',
-  // 	loadChildren: () => import('./pages/document/commune-document.module')
-  // 		.then(m => m.CommuneDocumentPageModule),
-  // 	// ...guardRoute,
-  // },
+  {
+    path: 'document/:id',
+    data: { title: 'Document' },
+    loadComponent: () =>
+      import('./pages/document-details/document-details-page.component').then(
+        (m) => m.DocumentDetailsPageComponent,
+      ),
+    // ...guardRoute,
+  },
   {
     path: 'new-document',
     data: { title: 'New Document' },

@@ -13,4 +13,29 @@ describe('docTypeListItems', () => {
       expect(item.title).toBeTruthy();
     }
   });
+
+  it('has no duplicate ids after merging in the docus-only doc types', () => {
+    const ids = docTypeListItems.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('includes the docus-only additions not yet in the assetus registry', () => {
+    const ids = docTypeListItems.map((i) => i.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(['id_card', 'diploma', 'employment_contract']),
+    );
+  });
+
+  it('still includes the pre-existing assetus-backed doc types', () => {
+    const ids = docTypeListItems.map((i) => i.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'other',
+        'passport',
+        'driving_license',
+        'birth_cert',
+        'marriage_cert',
+      ]),
+    );
+  });
 });

@@ -1,6 +1,6 @@
 <ion-list>
   @for (docType of docTypes; track docType.id) {
-    <ion-item tappable class="with-buttons" (click)="selectDocType(docType)">
+    <ion-item button="true" class="with-buttons" (click)="selectDocType(docType)">
       <ion-icon
         color="medium"
         [name]="
@@ -22,7 +22,11 @@
       }
 
       <ion-buttons slot="end">
-        <ion-button color="medium" (click)="newDoc(docType, $event)">
+        <ion-button
+          color="medium"
+          [attr.aria-label]="'Add ' + docType.title"
+          (click)="newDoc(docType, $event)"
+        >
           <ion-icon name="add" />
         </ion-button>
       </ion-buttons>

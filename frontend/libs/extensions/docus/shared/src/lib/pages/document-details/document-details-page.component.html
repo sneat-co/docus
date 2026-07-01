@@ -1,0 +1,72 @@
+<ion-header>
+  <ion-toolbar color="light" class="with-back-button">
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="$defaultBackUrl()" />
+    </ion-buttons>
+    <ion-title>
+      {{ docTypeItem?.emoji }}
+      {{ document?.dbo?.name || docTypeItem?.title || "Document" }}
+    </ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  @if (!document) {
+    <ion-text color="medium">Loading…</ion-text>
+  } @else {
+    <ion-card>
+      <ion-list>
+        <ion-item lines="none">
+          <ion-label color="medium">Type</ion-label>
+          <ion-label slot="end">
+            {{ docTypeItem?.emoji }} {{ docTypeItem?.title || document.dbo?.type }}
+          </ion-label>
+        </ion-item>
+        @if (document.dbo?.extra?.number) {
+          <ion-item lines="none">
+            <ion-label color="medium">Number</ion-label>
+            <ion-label slot="end">{{ document.dbo?.extra?.number }}</ion-label>
+          </ion-item>
+        }
+        @if (document.dbo?.extra?.issuedOn) {
+          <ion-item lines="none">
+            <ion-label color="medium">Issued on</ion-label>
+            <ion-label slot="end">{{ document.dbo?.extra?.issuedOn }}</ion-label>
+          </ion-item>
+        }
+        @if (document.dbo?.extra?.expiresOn) {
+          <ion-item lines="none">
+            <ion-label color="medium">Expires on</ion-label>
+            <ion-label slot="end">{{ document.dbo?.extra?.expiresOn }}</ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card>
+
+    @if (memberIDs.length) {
+      <ion-card>
+        <ion-item-divider color="light">
+          <ion-label>People</ion-label>
+        </ion-item-divider>
+        <!-- Fable: linkage-graph follow-up — render role labels (Spouse /
+             Child / Parent / Holder / ...) here once documents persist
+             role-tagged linkage edges instead of the flat memberIDs list. -->
+        <ion-list>
+          @for (id of memberIDs; track id) {
+            <ion-item lines="none">
+              <ion-label>{{ $contactTitles()[id] || id }}</ion-label>
+            </ion-item>
+          }
+        </ion-list>
+      </ion-card>
+    }
+
+    <ion-card>
+      <ion-card-content>
+        <ion-button color="danger" fill="outline" (click)="remove()">
+          Delete document
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

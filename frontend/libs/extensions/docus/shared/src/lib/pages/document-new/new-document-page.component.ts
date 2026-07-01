@@ -24,13 +24,16 @@ import {
   IonItem,
   IonItemDivider,
   IonLabel,
+  IonList,
+  IonListHeader,
   IonRow,
   IonText,
   IonTitle,
   IonToolbar,
+  ToastController,
 } from '@ionic/angular/standalone';
 import { ContactsSelectorInputComponent } from '@sneat/extension-contactus-shared';
-import { ClassName, ISelectItem, SelectFromListComponent } from '@sneat/ui';
+import { ClassName, ISelectItem } from '@sneat/ui';
 import { CountrySelectorComponent } from '@sneat/components';
 import {
   addSpace,
@@ -49,7 +52,16 @@ import {
   ICreateAssetRequest,
   IAssetResponse,
 } from '@sneat/extension-assetus-contract';
-import { docTypeListItems } from '@sneat/extension-docus-contract';
+import {
+  docTypeListItems,
+  getDocTypeSchema,
+  groupedDocTypeSchemas,
+  IDocContactRef,
+  IDocContactRoleDef,
+  IDocTypeSchema,
+  validateDocContactRoles,
+  validateDocFields,
+} from '@sneat/extension-docus-contract';
 import { SpaceComponentBaseParams } from '@sneat/space-components';
 import {
   ContactService,
@@ -64,7 +76,6 @@ import { distinctUntilChanged, map, Subject, takeUntil } from 'rxjs';
     FormsModule,
     CountrySelectorComponent,
     SpaceServiceModule,
-    SelectFromListComponent,
     AssetusCoreServicesModule,
     ContactusServicesModule,
     ContactsSelectorInputComponent,
@@ -86,6 +97,8 @@ import { distinctUntilChanged, map, Subject, takeUntil } from 'rxjs';
     IonCheckbox,
     IonCardContent,
     IonButton,
+    IonList,
+    IonListHeader,
     RouterLink,
   ],
   providers: [
@@ -101,6 +114,7 @@ export class NewDocumentPageComponent
 {
   private readonly contactService = inject(ContactService);
   private readonly spaceNavService = inject(SpaceNavService);
+  private readonly toastCtrl = inject(ToastController);
 
   // @Input() public override space?: ISpaceContext;
   // contactusSpace and country were inherited from the legacy AddAssetBaseComponent;
@@ -115,6 +129,12 @@ export class NewDocumentPageComponent
 
   protected readonly docTypes: ISelectItem[] = [...docTypeListItems];
 
+  // Doc types grouped for a sensibly-sectioned picker (Identity / Family /
+  // Vehicle / Education / Legal). Types without a docus schema yet (e.g.
+  // 'other') are not part of any group and are offered via the "Other" entry
+  // below the groups.
+  protected readonly groupedDocTypes = groupedDocTypeSchemas();
+
   protected docTitle = '';
   // Unset until the user picks a type. The legacy lib modelled "no type chosen"
   // as the 'unspecified' member of AssetDocumentType, which the live
@@ -123,6 +143,16 @@ export class NewDocumentPageComponent
   protected docType?: AssetDocumentType | 'other';
   protected docFields: IDocTypeStandardFields = {};
   protected docNumber = '';
+
+  // --- New doc-type schema state (typed fields + multi-contact roles) ---
+  // Populated whenever the picked docType has a docus doc-type schema
+  // (marriage_cert, birth_cert, passport, driving_license, id_card, diploma,
+  // employment_contract). Types without a schema (e.g. 'other') keep using
+  // the legacy fields above so nothing already working regresses.
+  protected roleContacts: Record<string, readonly IContactWithBriefAndSpace[]> =
+    {};
+  protected readonly revealedOptionalRoles = new Set<string>();
+  protected fieldValues: Record<string, string> = {};
 
   private readonly memberChanged = new Subject<void>();
 
@@ -143,8 +173,69 @@ export class NewDocumentPageComponent
     this.trackUrl();
   }
 
+  protected get schema(): IDocTypeSchema | undefined {
+    return getDocTypeSchema(this.docType);
+  }
+
   onDocTypeChange(docType: AssetDocumentType | 'other'): void {
-    this.docFields = standardDocTypesByID[docType].fields || {};
+    this.docFields = standardDocTypesByID[docType]?.fields || {};
+    this.roleContacts = {};
+    this.revealedOptionalRoles.clear();
+    this.fieldValues = {};
+  }
+
+  protected selectDocType(id: string): void {
+    this.docType = id as AssetDocumentType | 'other';
+    this.onDocTypeChange(this.docType);
+  }
+
+  protected clearDocType(): void {
+    this.docType = undefined;
+  }
+
+  protected get selectedDocTypeItem(): ISelectItem | undefined {
+    return this.docTypes.find((t) => t.id === this.docType);
+  }
+
+  protected get hasRequiredContacts(): boolean {
+    return this.contactRoleErrors.length === 0;
+  }
+
+  protected isRoleVisible(role: IDocContactRoleDef): boolean {
+    return role.min > 0 || this.revealedOptionalRoles.has(role.id);
+  }
+
+  protected revealOptionalRole(role: IDocContactRoleDef): void {
+    this.revealedOptionalRoles.add(role.id);
+  }
+
+  protected roleContactsFor(
+    roleId: string,
+  ): readonly IContactWithBriefAndSpace[] {
+    return this.roleContacts[roleId] ?? [];
+  }
+
+  protected onRoleContactsChange(
+    roleId: string,
+    contacts: readonly IContactWithBriefAndSpace[],
+  ): void {
+    this.roleContacts = { ...this.roleContacts, [roleId]: contacts };
+  }
+
+  private get contactRefs(): IDocContactRef[] {
+    return Object.entries(this.roleContacts).flatMap(([role, contacts]) =>
+      (contacts || []).map((c) => ({ role, contactID: c.id })),
+    );
+  }
+
+  protected get contactRoleErrors(): string[] {
+    const schema = this.schema;
+    return schema ? validateDocContactRoles(schema, this.contactRefs) : [];
+  }
+
+  protected get fieldErrors(): string[] {
+    const schema = this.schema;
+    return schema ? validateDocFields(schema, this.fieldValues) : [];
   }
 
   private trackUrl(): void {
@@ -156,7 +247,13 @@ export class NewDocumentPageComponent
     if (!this.docType) {
       return false;
     }
-    const fields = standardDocTypesByID[this.docType].fields;
+    const schema = this.schema;
+    if (schema) {
+      return (
+        this.contactRoleErrors.length === 0 && this.fieldErrors.length === 0
+      );
+    }
+    const fields = standardDocTypesByID[this.docType]?.fields;
     this.docFields = fields || {};
     if (!fields) {
       return false;
@@ -208,6 +305,9 @@ export class NewDocumentPageComponent
       )
       .subscribe((docType) => {
         this.docType = docType as AssetDocumentType | 'other';
+        if (this.docType) {
+          this.onDocTypeChange(this.docType);
+        }
       });
   }
 
@@ -226,15 +326,45 @@ export class NewDocumentPageComponent
     });
   };
 
+  private computeDocumentName(schema: IDocTypeSchema): string {
+    const nameByRole = (roleId: string): string | undefined =>
+      this.roleContactsFor(roleId)[0]?.brief?.title;
+    if (schema.id === 'marriage_cert') {
+      const a = nameByRole('spouse1');
+      const b = nameByRole('spouse2');
+      return a && b ? `${schema.title} — ${a} & ${b}` : schema.title;
+    }
+    if (schema.id === 'birth_cert') {
+      const child = nameByRole('child');
+      return child ? `${schema.title} — ${child}` : schema.title;
+    }
+    const primaryRoleID = schema.contactRoles[0]?.id;
+    const primary = primaryRoleID ? nameByRole(primaryRoleID) : undefined;
+    return primary ? `${schema.title} — ${primary}` : schema.title;
+  }
+
   protected submit(): void {
-    if (!this.space) {
+    if (!this.space || this.isSubmitting) {
+      return;
+    }
+    const schema = this.schema;
+    if (schema) {
+      this.submitSchemaBased(schema);
+    } else {
+      this.submitLegacy();
+    }
+  }
+
+  private submitLegacy(): void {
+    const space = this.space;
+    if (!space) {
       return;
     }
     const extra: IAssetDocumentExtra = {
       number: this.docNumber,
     };
     const request: ICreateAssetRequest = {
-      spaceID: this.space.id,
+      spaceID: space.id,
       name: this.docTitle,
       category: 'document',
       condition: 'good',
@@ -245,13 +375,109 @@ export class NewDocumentPageComponent
       extraType: 'document',
       extra: extra as Record<string, unknown>,
     };
-
+    this.isSubmitting = true;
     this.assetService.createAsset(request).subscribe({
-      next: this.onDocCreated,
+      next: (resp) => {
+        this.isSubmitting = false;
+        this.onDocCreated(resp);
+      },
       error: (err: unknown) => {
+        this.isSubmitting = false;
         this.errorLogger.logError(err, 'Failed to create new document');
+        this.showToast('Failed to create document. Please try again.');
       },
     });
+  }
+
+  private submitSchemaBased(schema: IDocTypeSchema): void {
+    const space = this.space;
+    if (!space) {
+      return;
+    }
+    const contactErrors = validateDocContactRoles(schema, this.contactRefs);
+    const fieldErrors = validateDocFields(schema, this.fieldValues);
+    if (contactErrors.length || fieldErrors.length) {
+      this.showToast([...contactErrors, ...fieldErrors].join('; '));
+      return;
+    }
+
+    // Fable: persist as linkage edges (facade4linkage, role-tagged ItemRef)
+    // — do not bake a bespoke member/role array into the document DBO. The
+    // canonical target for "this document relates these contacts, with
+    // these roles" (2 spouses on a marriage cert, child + parent(s) on a
+    // birth cert) is a role-tagged linkage edge per contact, created via
+    // `facade4linkage.SetRelated`; see `toLinkageEdgeDrafts()` in
+    // `@sneat/extension-docus-contract` for the 1:1 shape those edges would
+    // take once a linkage client is wired into this app (documents would
+    // then feed the relationship graph on create). There is no such client
+    // here today, so only the flat, already-assetus-modelled
+    // `memberIDs`/`membersInfo` below are written to the document; the role
+    // tags captured in `this.contactRefs` are used for validation/display
+    // in this form and then intentionally not persisted.
+    const extra: IAssetDocumentExtra = {};
+    const fieldsStr: Record<string, string> = {};
+    const fieldsDate: Record<string, string> = {};
+    for (const f of schema.fields) {
+      const value = this.fieldValues[f.id]?.trim();
+      if (!value) {
+        continue;
+      }
+      if (f.id === 'number') {
+        extra.number = value;
+      } else if (f.id === 'issuedOn') {
+        extra.issuedOn = value;
+      } else if (f.id === 'expiresOn') {
+        extra.expiresOn = value;
+      } else if (f.type === 'date') {
+        fieldsDate[f.id] = value;
+      } else {
+        fieldsStr[f.id] = value;
+      }
+    }
+
+    const memberIDs = [...new Set(this.contactRefs.map((r) => r.contactID))];
+    const membersInfo = memberIDs.map((id) => {
+      const contact = Object.values(this.roleContacts)
+        .flat()
+        .find((c) => c.id === id);
+      return { id, title: contact?.brief?.title };
+    });
+
+    const request: ICreateAssetRequest = {
+      spaceID: space.id,
+      name: this.computeDocumentName(schema),
+      category: 'document',
+      condition: 'good',
+      status: 'draft',
+      possession: 'owning',
+      type: schema.id,
+      memberIDs: memberIDs.length ? memberIDs : undefined,
+      membersInfo: membersInfo.length ? membersInfo : undefined,
+      extraType: 'document',
+      extra: extra as Record<string, unknown>,
+      fieldsStr: Object.keys(fieldsStr).length ? fieldsStr : undefined,
+      fieldsDate: Object.keys(fieldsDate).length ? fieldsDate : undefined,
+    };
+
+    this.isSubmitting = true;
+    this.assetService.createAsset(request).subscribe({
+      next: (resp) => {
+        this.isSubmitting = false;
+        this.onDocCreated(resp);
+      },
+      error: (err: unknown) => {
+        this.isSubmitting = false;
+        this.errorLogger.logError(err, 'Failed to create new document');
+        this.showToast('Failed to create document. Please try again.');
+      },
+    });
+  }
+
+  private showToast(message: string): void {
+    this.toastCtrl
+      .create({ message, duration: 4000, color: 'danger' })
+      .then((toast) => toast.present())
+      .catch((e: unknown) => this.errorLogger.logError(e));
   }
 
   private onDocCreated = (resp: IAssetResponse): void => {
@@ -260,7 +486,9 @@ export class NewDocumentPageComponent
       return;
     }
     this.spaceNavService
-      .navigateForwardToSpacePage(space, 'document/' + resp.id)
+      .navigateForwardToSpacePage(space, 'document/' + resp.id, {
+        replaceUrl: true,
+      })
       .catch(
         this.errorLogger.logErrorHandler('Failed to navigate to document page'),
       );
