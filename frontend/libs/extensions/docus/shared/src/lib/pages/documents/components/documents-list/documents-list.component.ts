@@ -6,7 +6,10 @@ import {
   Output,
   SimpleChanges,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import {
+  IonButton,
+  IonButtons,
   IonIcon,
   IonItem,
   IonItemOption,
@@ -30,6 +33,9 @@ import { DocumentsBaseComponent } from '../documents-base.component';
     IonItemOption,
     IonIcon,
     IonList,
+    IonButton,
+    IonButtons,
+    RouterLink,
   ],
 })
 export class DocumentsListComponent
@@ -56,14 +62,18 @@ export class DocumentsListComponent
   }
 
   protected onDocsChanged(): void {
-    this.filteredDocs = this.allDocuments;
     const text: string = this.filter;
+    // Preserve the undefined/loading vs. empty-array/loaded distinction so
+    // the template can tell "still loading" apart from "loaded, zero
+    // documents" (the latter renders the mandatory empty state).
     this.filteredDocs =
-      this.allDocuments?.filter(
-        (d) =>
-          !text ||
-          (d.dbo?.name && d.dbo.name.toLowerCase().includes(text)) ||
-          (d.dbo?.type && d.dbo.type.toLowerCase().includes(text)),
-      ) || [];
+      this.allDocuments === undefined
+        ? undefined
+        : this.allDocuments.filter(
+            (d) =>
+              !text ||
+              (d.dbo?.name && d.dbo.name.toLowerCase().includes(text)) ||
+              (d.dbo?.type && d.dbo.type.toLowerCase().includes(text)),
+          );
   }
 }
