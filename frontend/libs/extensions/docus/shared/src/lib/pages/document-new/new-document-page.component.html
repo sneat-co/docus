@@ -252,8 +252,11 @@
           }
           <ion-card>
             <ion-card-content>
-              <ion-button [disabled]="!isFormValid" (click)="submit()">
-                Create
+              <ion-button
+                [disabled]="!isFormValid || isSubmitting"
+                (click)="submit()"
+              >
+                {{ isSubmitting ? "Creating…" : "Create" }}
               </ion-button>
               <ion-button
                 color="light"

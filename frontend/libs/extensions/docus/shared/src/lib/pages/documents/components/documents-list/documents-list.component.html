@@ -9,7 +9,7 @@
     <!--    </ion-item>-->
     @for (document of filteredDocs; track document.id) {
       <ion-item-sliding #slidingItem>
-        <ion-item tappable (click)="goDoc.emit(document)">
+        <ion-item button="true" (click)="goDoc.emit(document)">
           <ion-label>
             <h2>
               {{ document?.dbo?.type }}

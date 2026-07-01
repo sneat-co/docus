@@ -157,6 +157,9 @@ export class DocumentDetailsPageComponent extends SpaceItemsBaseComponent {
     if (!space?.id || !id) {
       return;
     }
+    if (!confirm('Delete this document? This cannot be undone.')) {
+      return;
+    }
     this.assetService
       .removeAsset({ spaceID: space.id, assetID: id })
       .subscribe({
