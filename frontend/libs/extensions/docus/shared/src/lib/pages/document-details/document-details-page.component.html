@@ -11,7 +11,21 @@
 </ion-header>
 
 <ion-content class="ion-padding">
-  @if (!document) {
+  @if ($error()) {
+    <!-- Tri-state: a failed load is an error card with Retry (budgetus
+         precedent), never an endless "Loading…". -->
+    <ion-card>
+      <ion-card-header color="danger">
+        <ion-card-title>Failed to load document</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-text color="danger">{{ $error() }}</ion-text>
+        <div class="ion-margin-top">
+          <ion-button size="small" (click)="reload()">Retry</ion-button>
+        </div>
+      </ion-card-content>
+    </ion-card>
+  } @else if (!document) {
     <ion-text color="medium">Loading…</ion-text>
   } @else {
     <ion-card>

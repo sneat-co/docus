@@ -109,6 +109,21 @@
                 [$selectedContacts]="roleContactsFor(role.id)"
                 (selectedContactsChange)="onRoleContactsChange(role.id, $event)"
               />
+              <!-- Working selection affordance: the embedded selector above
+                   hides its Add button while its selection is empty, so this
+                   button is the only reachable way to pick the first contact.
+                   It opens the contacts-selector modal, which loads space
+                   contacts itself and also offers creating a new contact. -->
+              <ion-item
+                button
+                lines="none"
+                (click)="selectContactsForRole(role)"
+              >
+                <ion-label color="primary">
+                  {{ roleContactsFor(role.id).length ? "Change" : "Select" }}
+                  {{ role.label }}…
+                </ion-label>
+              </ion-item>
             } @else {
               <ion-item
                 button
@@ -178,6 +193,14 @@
             [$selectedContacts]="$selectedContacts()"
             (selectedContactsChange)="$selectedContacts.set($event)"
           />
+          <!-- Working selection affordance — see the schema branch above for
+               why the embedded selector alone dead-ends with an empty
+               selection. -->
+          <ion-item button lines="none" (click)="selectContactsForLegacyDoc()">
+            <ion-label color="primary">
+              {{ $hasSelectedContacts() ? "Change" : "Select" }} contacts…
+            </ion-label>
+          </ion-item>
         </ion-card>
 
         @if ($hasSelectedContacts()) {

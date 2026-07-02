@@ -5,6 +5,8 @@ import {
   IonButtons,
   IonCard,
   IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
   IonContent,
   IonHeader,
   IonItem,
@@ -54,6 +56,8 @@ import { distinctUntilChanged, map, takeUntil } from 'rxjs';
     IonText,
     IonCard,
     IonCardContent,
+    IonCardHeader,
+    IonCardTitle,
     IonList,
     IonItem,
     IonItemDivider,
@@ -72,6 +76,11 @@ export class DocumentDetailsPageComponent extends SpaceItemsBaseComponent {
 
   protected documentID?: string;
   protected document?: IAssetDocumentContext;
+
+  // Tri-state per the house states standard: loading / error / content must
+  // be distinct — a load failure must not masquerade as "Loading…" forever
+  // (or as empty). Error card with Retry follows the budgetus precedent.
+  protected readonly $error = signal<string | undefined>(undefined);
 
   protected readonly $contactTitles = signal<Readonly<Record<string, string>>>(
     {},
@@ -120,6 +129,7 @@ export class DocumentDetailsPageComponent extends SpaceItemsBaseComponent {
     if (!space?.id || !id) {
       return;
     }
+    this.$error.set(undefined);
     this.assetService
       .watchAssetByID(space, id)
       .pipe(this.takeUntilDestroyed())
@@ -128,8 +138,22 @@ export class DocumentDetailsPageComponent extends SpaceItemsBaseComponent {
           this.document = doc as IAssetDocumentContext;
           this.loadContactNames();
         },
-        error: this.errorLogger.logErrorHandler('Failed to load document'),
+        error: (err: unknown) => {
+          // Fable refactoring: this was log-only
+          // (`this.errorLogger.logErrorHandler('Failed to load document')`),
+          // leaving the page stuck on "Loading…" forever for a failed load or
+          // nonexistent id. Surface the error state instead (tri-state).
+          this.errorLogger.logError(err, 'Failed to load document');
+          this.$error.set(
+            'Failed to load this document. It may have been deleted, or you may not have access.',
+          );
+        },
       });
+  }
+
+  /** Retry after a failed load (budgetus error-card precedent). */
+  protected reload(): void {
+    this.loadDocument();
   }
 
   private loadContactNames(): void {
