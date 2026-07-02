@@ -32,7 +32,10 @@ import {
   IonToolbar,
   ToastController,
 } from '@ionic/angular/standalone';
-import { ContactsSelectorInputComponent } from '@sneat/extension-contactus-shared';
+import {
+  ContactsSelectorInputComponent,
+  ContactsSelectorService,
+} from '@sneat/extension-contactus-shared';
 import { ClassName, ISelectItem } from '@sneat/ui';
 import { CountrySelectorComponent } from '@sneat/components';
 import {
@@ -66,10 +69,18 @@ import { SpaceComponentBaseParams } from '@sneat/space-components';
 import {
   ContactService,
   ContactusServicesModule,
+  ContactusSpaceService,
 } from '@sneat/extension-contactus-internal';
 import { zipMapBriefsWithIDs } from '@sneat/space-models';
 import { SpaceNavService, SpaceServiceModule } from '@sneat/space-services';
-import { distinctUntilChanged, map, Subject, takeUntil } from 'rxjs';
+import {
+  distinctUntilChanged,
+  map,
+  of,
+  Subject,
+  switchMap,
+  takeUntil,
+} from 'rxjs';
 
 @Component({
   imports: [
@@ -113,6 +124,8 @@ export class NewDocumentPageComponent
   implements OnChanges
 {
   private readonly contactService = inject(ContactService);
+  private readonly contactusSpaceService = inject(ContactusSpaceService);
+  private readonly contactsSelectorService = inject(ContactsSelectorService);
   private readonly spaceNavService = inject(SpaceNavService);
   private readonly toastCtrl = inject(ToastController);
 
@@ -171,6 +184,36 @@ export class NewDocumentPageComponent
   public constructor() {
     super();
     this.trackUrl();
+    this.watchSpaceContacts();
+  }
+
+  // On this routed page nothing binds the `contactusSpace` @Input, so the
+  // ngOnChanges path below never populated `$contacts` and the contact-role
+  // pickers rendered a permanent "No contacts" — dead-ending every create
+  // flow (both submit gates require contacts). Populate `$contacts` from the
+  // contactus space module record instead, keyed off the space id from the
+  // URL, the same way sibling extensions read space contacts.
+  private watchSpaceContacts(): void {
+    this.spaceIDChanged$
+      .pipe(
+        takeUntil(this.destroyed$),
+        distinctUntilChanged(),
+        switchMap((spaceID) =>
+          spaceID
+            ? this.contactusSpaceService.watchContactBriefs(spaceID)
+            : of(undefined),
+        ),
+      )
+      .subscribe({
+        next: (contacts) => this.$contacts.set(contacts),
+        // Do NOT set [] on error — an error must not masquerade as an empty
+        // contact list. The "Select …" buttons below the embedded pickers use
+        // the contacts-selector modal, which loads contacts itself, so the
+        // flow stays usable even if this inline list fails to load.
+        error: this.errorLogger.logErrorHandler(
+          'Failed to load space contacts for the new-document form',
+        ),
+      });
   }
 
   protected get schema(): IDocTypeSchema | undefined {
@@ -222,6 +265,58 @@ export class NewDocumentPageComponent
     this.roleContacts = { ...this.roleContacts, [roleId]: contacts };
   }
 
+  // ---------------------------------------------------------------------
+  // Working "Select …" affordance for the contact pickers.
+  //
+  // The embedded `sneat-contacts-selector-input` (contactus-shared 0.12.2)
+  // only renders its Add button once a contact is already selected, and its
+  // internal add handler no-ops because it waits for a `$contactusSpace`
+  // signal nothing sets — so with an empty selection there is no working way
+  // to pick a contact and the create flow dead-ends. These buttons open the
+  // same contacts-selector modal directly (it loads space contacts itself
+  // and offers creating a new contact), giving every role a working
+  // selection/Add path even when the space has no contacts yet.
+  // ---------------------------------------------------------------------
+
+  protected selectContactsForRole(role: IDocContactRoleDef): void {
+    this.openContactsSelector(
+      this.roleContactsFor(role.id),
+      role.max,
+      (contacts) => this.onRoleContactsChange(role.id, contacts),
+    );
+  }
+
+  protected selectContactsForLegacyDoc(): void {
+    this.openContactsSelector(
+      this.$selectedContacts(),
+      this.docFields.members?.max,
+      (contacts) => this.$selectedContacts.set(contacts),
+    );
+  }
+
+  private openContactsSelector(
+    selectedItems: readonly IContactWithBriefAndSpace[],
+    max: number | undefined,
+    onSelected: (contacts: readonly IContactWithBriefAndSpace[]) => void,
+  ): void {
+    const space = this.space;
+    if (!space) {
+      return;
+    }
+    this.contactsSelectorService
+      .selectMultipleContacts({
+        selectedItems,
+        max,
+        componentProps: { space },
+      })
+      .then((contacts) => {
+        if (contacts) {
+          onSelected(contacts);
+        }
+      })
+      .catch(this.errorLogger.logErrorHandler('Failed to select contacts'));
+  }
+
   private get contactRefs(): IDocContactRef[] {
     return Object.entries(this.roleContacts).flatMap(([role, contacts]) =>
       (contacts || []).map((c) => ({ role, contactID: c.id })),
@@ -271,7 +366,13 @@ export class NewDocumentPageComponent
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['contactusTeam']) {
+    // Fable refactoring: this keyed on `changes['contactusTeam']`, but the
+    // input has been named `contactusSpace` since the assetus-base migration
+    // (see the field's comment above) — so even an embedding host binding the
+    // input would never populate `$contacts`. On the routed page the real fix
+    // is `watchSpaceContacts()` in the constructor; this branch remains for
+    // hosts that DO bind the input.
+    if (changes['contactusSpace']) {
       const space = this.space;
       if (space) {
         const contactusTeam = this.contactusSpace;
